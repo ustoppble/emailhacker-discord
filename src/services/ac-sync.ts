@@ -1,18 +1,17 @@
 import { config } from '../config'
 
-interface OnboardingData {
-  discord_id: string
-  discord_username: string
-  name: string
-  email: string
-  whatsapp: string
-  nivel_tecnico: string
-  ferramentas: string[]
-  objetivo: string
-  faixa_renda: string
-  maior_dificuldade: string
-  como_conheceu: string
-  o_que_quer: string
+// Mapping: campo do onboarding → campo customizado no AC
+const AC_FIELDS: Record<string, { title: string; type: string }> = {
+  discord_username: { title: '[DISC] Username', type: 'text' },
+  discord_id: { title: '[DISC] ID', type: 'text' },
+  whatsapp: { title: '[DISC] WhatsApp', type: 'text' },
+  nivel_tecnico: { title: '[DISC] Nivel Tecnico', type: 'text' },
+  ferramentas: { title: '[DISC] Ferramentas', type: 'text' },
+  objetivo: { title: '[DISC] Objetivo', type: 'text' },
+  faixa_renda: { title: '[DISC] Faixa Renda', type: 'text' },
+  maior_dificuldade: { title: '[DISC] Maior Dificuldade', type: 'text' },
+  como_conheceu: { title: '[DISC] Como Conheceu', type: 'text' },
+  o_que_quer: { title: '[DISC] O Que Quer De Mim', type: 'textarea' },
 }
 
 async function acRequest(endpoint: string, method: string, body?: unknown) {
@@ -32,29 +31,25 @@ async function acRequest(endpoint: string, method: string, body?: unknown) {
   return res.json() as Promise<any>
 }
 
-// Cache de field IDs pra nao ficar buscando toda vez
+// Cache de field IDs
 const fieldCache = new Map<string, string>()
 
 async function getOrCreateField(title: string, type: string): Promise<string> {
   if (fieldCache.has(title)) return fieldCache.get(title)!
 
-  // Busca com paginacao (AC pode ter muitos campos)
   let offset = 0
   while (true) {
     const { fields } = await acRequest(`fields?limit=100&offset=${offset}`, 'GET')
     if (!fields || fields.length === 0) break
-
     const existing = fields.find((f: any) => f.title === title)
     if (existing) {
       fieldCache.set(title, existing.id)
       return existing.id
     }
-
     offset += 100
     if (fields.length < 100) break
   }
 
-  // Nao encontrou — cria
   try {
     const { field } = await acRequest('fields', 'POST', {
       field: { title, type, visible: 1 },
@@ -62,16 +57,12 @@ async function getOrCreateField(title: string, type: string): Promise<string> {
     fieldCache.set(title, field.id)
     return field.id
   } catch (err) {
-    // Se ja existe (race condition ou case sensitivity), busca de novo
     if (String(err).includes('field_already_exists')) {
-      // Busca todos paginando
       let off = 0
       while (true) {
         const { fields } = await acRequest(`fields?limit=100&offset=${off}`, 'GET')
         if (!fields || fields.length === 0) break
-        const found = fields.find((f: any) =>
-          f.title.toLowerCase() === title.toLowerCase()
-        )
+        const found = fields.find((f: any) => f.title.toLowerCase() === title.toLowerCase())
         if (found) {
           fieldCache.set(title, found.id)
           return found.id
@@ -84,27 +75,45 @@ async function getOrCreateField(title: string, type: string): Promise<string> {
   }
 }
 
-export async function syncToAC(data: OnboardingData): Promise<void> {
+async function addTag(contactId: string, tagName: string): Promise<void> {
+  const { tags: existing } = await acRequest(`tags?search=${encodeURIComponent(tagName)}`, 'GET')
+  let tagId = existing?.[0]?.id
+  if (!tagId) {
+    const { tag } = await acRequest('tags', 'POST', { tag: { tag: tagName, tagType: 'contact' } })
+    tagId = tag.id
+  }
+  await acRequest('contactTags', 'POST', {
+    contactTag: { contact: contactId, tag: tagId },
+  }).catch(() => {})
+}
+
+// Pre-resolve todos os field IDs (aquece cache pra updates incrementais)
+async function resolveAllFieldIds(): Promise<Record<string, string>> {
+  const ids: Record<string, string> = {}
+  for (const [key, { title, type }] of Object.entries(AC_FIELDS)) {
+    ids[key] = await getOrCreateField(title, type)
+  }
+  console.log('[AC] Campos resolvidos:', Object.entries(ids).map(([k, v]) => `${k}=${v}`).join(', '))
+  return ids
+}
+
+/**
+ * Sync inicial após gate (Q1-3).
+ * Cria contato no AC com dados básicos + tags + listas.
+ * Aquece cache de field IDs pra updates incrementais.
+ */
+export async function syncGateToAC(data: {
+  email: string
+  name: string
+  whatsapp: string
+  discord_id: string
+  discord_username: string
+}): Promise<void> {
   try {
-    console.log(`[AC] Iniciando sync para ${data.email}...`)
+    console.log(`[AC] Gate sync: ${data.email}...`)
 
-    // Garante que os campos customizados existem
-    const fieldIds = {
-      discord_username: await getOrCreateField('[DISC] Username', 'text'),
-      discord_id: await getOrCreateField('[DISC] ID', 'text'),
-      whatsapp: await getOrCreateField('[DISC] WhatsApp', 'text'),
-      nivel_tecnico: await getOrCreateField('[DISC] Nivel Tecnico', 'text'),
-      ferramentas_vibe: await getOrCreateField('[DISC] Ferramentas', 'text'),
-      objetivo_principal: await getOrCreateField('[DISC] Objetivo', 'text'),
-      faixa_renda_software: await getOrCreateField('[DISC] Faixa Renda', 'text'),
-      maior_dificuldade: await getOrCreateField('[DISC] Maior Dificuldade', 'text'),
-      como_conheceu: await getOrCreateField('[DISC] Como Conheceu', 'text'),
-      o_que_quer_de_mim: await getOrCreateField('[DISC] O Que Quer De Mim', 'textarea'),
-    }
+    const fieldIds = await resolveAllFieldIds()
 
-    console.log(`[AC] Campos resolvidos:`, Object.entries(fieldIds).map(([k,v]) => `${k}=${v}`).join(', '))
-
-    // Sync contato
     const { contact } = await acRequest('contact/sync', 'POST', {
       contact: {
         email: data.email,
@@ -114,62 +123,76 @@ export async function syncToAC(data: OnboardingData): Promise<void> {
           { field: fieldIds.discord_username, value: data.discord_username },
           { field: fieldIds.discord_id, value: data.discord_id },
           { field: fieldIds.whatsapp, value: data.whatsapp },
-          { field: fieldIds.nivel_tecnico, value: data.nivel_tecnico },
-          { field: fieldIds.ferramentas_vibe, value: data.ferramentas.join(', ') },
-          { field: fieldIds.objetivo_principal, value: data.objetivo },
-          { field: fieldIds.faixa_renda_software, value: data.faixa_renda },
-          { field: fieldIds.maior_dificuldade, value: data.maior_dificuldade },
-          { field: fieldIds.como_conheceu, value: data.como_conheceu },
-          { field: fieldIds.o_que_quer_de_mim, value: data.o_que_quer },
         ],
       },
     })
 
-    const contactId = contact.id
-    console.log(`[AC] Contato criado/atualizado: ${data.email} (ID: ${contactId})`)
+    console.log(`[AC] Contato criado/atualizado: ${data.email} (ID: ${contact.id})`)
 
-    // Adiciona a lista All (ID 83) + Discord Vibe Coders (ID 127)
+    // Listas
     for (const listId of ['83', '127']) {
       await acRequest('contactLists', 'POST', {
-        contactList: { list: listId, contact: contactId, status: 1 },
+        contactList: { list: listId, contact: contact.id, status: 1 },
       }).catch(() => {})
     }
-    console.log(`[AC] Adicionado as listas All + Discord Vibe Coders`)
 
-    // Adiciona tags
-    const tags = [
-      'discord-member',
-      'fonte:discord',
-      'audiencia:vibe-coder',
-      `nivel:${data.nivel_tecnico}`,
-      `objetivo:${data.objetivo}`,
-    ]
-
-    for (const tagName of tags) {
-      const { tags: existingTags } = await acRequest(
-        `tags?search=${encodeURIComponent(tagName)}`,
-        'GET'
-      )
-      let tagId = existingTags?.[0]?.id
-
-      if (!tagId) {
-        const { tag } = await acRequest('tags', 'POST', {
-          tag: { tag: tagName, tagType: 'contact' },
-        })
-        tagId = tag.id
-      }
-
-      await acRequest('contactTags', 'POST', {
-        contactTag: { contact: contactId, tag: tagId },
-      }).catch(() => {
-        // Tag ja vinculada — ignora
-      })
-
-      console.log(`[AC] Tag "${tagName}" vinculada`)
+    // Tags
+    for (const tagName of ['discord-member', 'fonte:discord', 'discord-onboarding-parcial']) {
+      await addTag(contact.id, tagName)
     }
 
-    console.log(`[AC] ✅ Sync completo: ${data.email}`)
+    console.log(`[AC] ✅ Gate sync completo: ${data.email}`)
   } catch (err) {
-    console.error('[AC] ❌ Erro ao sincronizar contato:', err)
+    console.error('[AC] ❌ Erro no gate sync:', err)
+  }
+}
+
+/**
+ * Atualiza um campo no AC após cada resposta bonus (Q4-10).
+ * Usa contact/sync (upsert por email) com apenas o campo alterado.
+ */
+export async function updateACField(email: string, fieldKey: string, value: string): Promise<void> {
+  try {
+    const field = AC_FIELDS[fieldKey]
+    if (!field) return
+    const fieldId = await getOrCreateField(field.title, field.type)
+
+    await acRequest('contact/sync', 'POST', {
+      contact: {
+        email,
+        fieldValues: [{ field: fieldId, value }],
+      },
+    })
+    console.log(`[AC] Atualizado: ${fieldKey}`)
+  } catch (err) {
+    console.error(`[AC] Erro ao atualizar ${fieldKey}:`, err)
+  }
+}
+
+/**
+ * Marca onboarding completo no AC: adiciona tags de conclusão e segmentação.
+ */
+export async function markACOnboardingComplete(
+  email: string,
+  nivelTecnico: string,
+  objetivo: string
+): Promise<void> {
+  try {
+    const { contacts } = await acRequest(`contacts?email=${encodeURIComponent(email)}`, 'GET')
+    const contactId = contacts?.[0]?.id
+    if (!contactId) return
+
+    for (const tagName of [
+      'discord-onboarding-completo',
+      'audiencia:vibe-coder',
+      `nivel:${nivelTecnico}`,
+      `objetivo:${objetivo}`,
+    ]) {
+      await addTag(contactId, tagName)
+    }
+
+    console.log(`[AC] ✅ Onboarding completo: ${email}`)
+  } catch (err) {
+    console.error('[AC] Erro ao marcar completo:', err)
   }
 }
