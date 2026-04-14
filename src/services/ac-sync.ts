@@ -169,7 +169,55 @@ export async function syncToAC(data: OnboardingData): Promise<void> {
     }
 
     console.log(`[AC] ✅ Sync completo: ${data.email}`)
+
+    // Persiste no Supabase
+    await saveToSupabase(data, 'completed')
   } catch (err) {
     console.error('[AC] ❌ Erro ao sincronizar contato:', err)
+    // Salva no Supabase mesmo se AC falhar
+    await saveToSupabase(data, 'error').catch(() => {})
+  }
+}
+
+async function saveToSupabase(data: OnboardingData, status: string): Promise<void> {
+  if (!config.supabaseUrl || !config.supabaseServiceKey) {
+    console.log('[SUPA] Supabase não configurado — skip')
+    return
+  }
+
+  try {
+    const res = await fetch(`${config.supabaseUrl}/rest/v1/discord_onboarding`, {
+      method: 'POST',
+      headers: {
+        'apikey': config.supabaseServiceKey,
+        'Authorization': `Bearer ${config.supabaseServiceKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        discord_id: data.discord_id,
+        discord_username: data.discord_username,
+        name: data.name,
+        email: data.email,
+        whatsapp: data.whatsapp,
+        nivel_tecnico: data.nivel_tecnico,
+        ferramentas: data.ferramentas,
+        objetivo: data.objetivo,
+        faixa_renda: data.faixa_renda,
+        maior_dificuldade: data.maior_dificuldade,
+        como_conheceu: data.como_conheceu,
+        o_que_quer: data.o_que_quer,
+        status,
+      }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`[SUPA] Erro ao salvar onboarding: ${res.status} — ${text}`)
+    } else {
+      console.log(`[SUPA] ✅ Onboarding salvo: ${data.email}`)
+    }
+  } catch (err) {
+    console.error('[SUPA] ❌ Erro ao salvar onboarding:', err)
   }
 }
