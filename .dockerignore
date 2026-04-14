@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+*.md
+.env*
+src/test-*
+src/fix-*
+src/kick-*
+src/setup*
+src/check-*
+src/create-*
+src/rename-*
+src/recreate-*
+src/show-*
+src/assign-*

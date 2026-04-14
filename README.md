@@ -2,69 +2,65 @@
 
 Bot ZERO — gatekeeper da comunidade EmailHacker no Discord.
 
-## O que é
+## O que faz
 
-Bot Discord (discord.js v14) que gerencia entrada de membros na comunidade. Onboarding automático: atribui roles, verifica se tem conta AC, e sincroniza dados.
+Bot Discord (discord.js v14) que gerencia entrada de novos membros. Quando alguém entra no servidor:
 
-## Onde roda
-
-- **VPS** (PM2 ou manual)
-- **Servidor Discord:** EmailHacker community
-- Conexão WebSocket com Discord API (sem porta HTTP)
-
-## Funcionalidades
-
-- Onboarding automático de novos membros (role newcomer → member)
-- Convite OG pra membros especiais
-- Sync com ActiveCampaign (verifica se contato existe)
-- Setup de canais e roles
-- Gatekeeper (valida acesso)
+1. Recebe role `newcomer` e vê apenas o `#gatekeeper`
+2. Bot cria thread privada e faz 10 perguntas (nome, email, whatsapp, nível, ferramentas, objetivo, renda, dificuldade, fonte, o que quer)
+3. Após Q3 (email/whatsapp): cria contato no ActiveCampaign em background com tag `discord-member`
+4. Cada resposta Q4-10: salva no Supabase + atualiza campo customizado no AC em background
+5. Após Q10: envia mensagem final com prompt de apresentação, troca roles (`newcomer` → `member`), anuncia no `#general`
 
 ## Estrutura
 
 ```
 src/
-  index.ts              — entrada principal
-  config.ts             — carrega variáveis de ambiente
+  index.ts              — entrada: eventos GuildMemberAdd + MessageCreate
+  config.ts             — carrega env vars (secrets central ou process.env)
   handlers/
-    onboarding.ts       — fluxo de onboarding
-    og-invite.ts        — convites OG
+    onboarding.ts       — fluxo de 10 perguntas (text, buttons, multi-select)
+    og-invite.ts        — convite OG pra membros que entraram antes do gatekeeper
   services/
-    ac-sync.ts          — sync com ActiveCampaign
+    ac-sync.ts          — sync com ActiveCampaign (contact/sync, fields, tags)
+    supabase.ts         — CRUD na tabela discord_onboarding (saves incrementais)
   utils/
-    validators.ts       — validações
+    validators.ts       — validação de email e telefone
+```
+
+## Deploy
+
+Roda no **Coolify** (Docker) na VPS. Conexão WebSocket com Discord API (sem porta HTTP exposta).
+
+**IMPORTANTE:** Sempre usar **stop + start** no Coolify, nunca restart. Rolling update mantém 2 containers vivos com o mesmo bot token → mensagens duplicadas.
+
+```bash
+# Dev local
+npm install && npm run dev
+
+# Build
+npm run build && node dist/index.js
 ```
 
 ## Variáveis de ambiente
 
-Carrega de `~/.secrets/emailhacker` (local) ou `/root/.secrets/emailhacker` (VPS).
+Em dev: carrega de `~/.secrets/emailhacker`. No Coolify: env vars no painel.
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
 | `DISCORD_BOT_TOKEN` | Sim | Token do bot Discord |
 | `DISCORD_CLIENT_ID` | Sim | Client ID da app Discord |
 | `DISCORD_GUILD_ID` | Sim | ID do servidor |
-| `DISCORD_ROLE_NEWCOMER` | Sim | Role ID pra novos membros |
-| `DISCORD_ROLE_MEMBER` | Sim | Role ID pra membros verificados |
-| `DISCORD_ROLE_OG` | Sim | Role ID pra OGs |
-| `DISCORD_CHANNEL_GATEKEEPER` | Sim | Canal de boas-vindas |
-| `DISCORD_CHANNEL_GENERAL` | Sim | Canal geral |
-| `AC_LASCHUK_ACCOUNT` | Não | Conta AC pra sync |
-| `AC_LASCHUK_API_KEY` | Não | API key AC pra sync |
-| `API_BASE_URL` | Não (default: `localhost:1337`) | URL do EmailHacker |
-
-## Deploy
-
-```bash
-npm install && npm run build && node dist/index.js
-```
-
-Ou via PM2: `pm2 start dist/index.js --name zero-bot`
-
-## Pendências
-
-- [ ] Path `.secrets` hardcoded como `../../../.secrets` — ajustar pra `~/.secrets/emailhacker`
+| `DISCORD_ROLE_NEWCOMER` | Sim | Role atribuída ao entrar |
+| `DISCORD_ROLE_MEMBER` | Sim | Role após completar onboarding |
+| `DISCORD_ROLE_OG` | Sim | Role pra membros originais |
+| `DISCORD_CHANNEL_GATEKEEPER` | Sim | Canal onde o bot posta boas-vindas |
+| `DISCORD_CHANNEL_GENERAL` | Sim | Canal geral (anúncios + invite OG) |
+| `AC_LASCHUK_ACCOUNT` | Sim | Conta ActiveCampaign (subdomain) |
+| `AC_LASCHUK_API_KEY` | Sim | API key do ActiveCampaign |
+| `SUPABASE_URL` | Sim | URL do projeto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Sim | Service role key do Supabase |
 
 ## Stack
 
-TypeScript, discord.js v14, ActiveCampaign API.
+TypeScript, discord.js v14, ActiveCampaign API, Supabase (PostgreSQL).
