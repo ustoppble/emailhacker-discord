@@ -326,10 +326,10 @@ async function runQuestions(
   // Mensagem final
   await thread.send(
     '━━━━━━━━━━━━━━━━━━━━━\n\n' +
-    `🔓 **ACESSO LIBERADO, ${name}!**\n\n` +
+    `🔓 **Canal liberado, ${name}!**\n\n` +
     (isOG ? '🏆 Voce ganhou o cargo **OG** — Original Gangster. Respeito.\n\n' : '') +
-    `Agora vai no <#${config.channelGeneral}> e se apresenta pra galera!\n\n` +
-    'Cola esse prompt no teu ChatGPT ou Claude pra criar uma apresentacao personalizada:\n\n' +
+    `Agora te apresenta no <#${config.channelGeneral}> pro pessoal te conhecer!\n\n` +
+    'Pra isso, cola o prompt abaixo no teu ChatGPT ou Claude — ele gera uma apresentacao personalizada baseada no teu historico:\n\n' +
     '```\n' +
     'Ola! Eu acabei de entrar no Discord de um cara que ta fazendo live coding todos os dias. ' +
     'Ele ta construindo uma plataforma de agente vertical. ' +
