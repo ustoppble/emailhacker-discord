@@ -4,7 +4,6 @@ import { config } from '../config'
 const AC_FIELDS: Record<string, { title: string; type: string }> = {
   discord_username: { title: '[DISC] Username', type: 'text' },
   discord_id: { title: '[DISC] ID', type: 'text' },
-  whatsapp: { title: '[DISC] WhatsApp', type: 'text' },
   nivel_tecnico: { title: '[DISC] Nivel Tecnico', type: 'text' },
   ferramentas: { title: '[DISC] Ferramentas', type: 'text' },
   objetivo: { title: '[DISC] Objetivo', type: 'text' },
@@ -122,7 +121,6 @@ export async function syncGateToAC(data: {
         fieldValues: [
           { field: fieldIds.discord_username, value: data.discord_username },
           { field: fieldIds.discord_id, value: data.discord_id },
-          { field: fieldIds.whatsapp, value: data.whatsapp },
         ],
       },
     })
