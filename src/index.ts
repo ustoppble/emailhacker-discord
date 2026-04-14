@@ -1,6 +1,6 @@
-import { Client, GatewayIntentBits, Events, ButtonInteraction } from 'discord.js'
+import { Client, GatewayIntentBits, Events } from 'discord.js'
 import { config } from './config'
-import { startOnboarding, handleOnboardingClick } from './handlers/onboarding'
+import { startOnboarding } from './handlers/onboarding'
 import { sendOGInvite } from './handlers/og-invite'
 
 const client = new Client({
@@ -36,7 +36,7 @@ client.once(Events.ClientReady, (c) => {
   }
 })
 
-// Novo membro entra no servidor
+// Novo membro entra no servidor → thread privada + onboarding direto
 client.on(Events.GuildMemberAdd, async (member) => {
   console.log(`[ZERO] Novo membro: ${member.user.tag}`)
 
@@ -49,27 +49,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
   await startOnboarding(member)
 })
 
-// Handler global de interações (botões persistentes)
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return
-
-  // Botão de onboarding no #gatekeeper
-  if (interaction.customId.startsWith('start_onboarding_')) {
-    const targetUserId = interaction.customId
-      .replace('start_onboarding_', '')
-      .replace('_og', '')
-
-    // Só o próprio usuário pode clicar no seu botão
-    if (interaction.user.id !== targetUserId) {
-      await interaction.reply({ content: 'Esse botao nao e pra voce! 😅', ephemeral: true })
-      return
-    }
-
-    await handleOnboardingClick(interaction as ButtonInteraction)
-  }
-})
-
-// DM recebida (para retomar onboarding)
+// DM recebida → retomar onboarding
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return
   if (!message.guild) {
@@ -79,17 +59,8 @@ client.on(Events.MessageCreate, async (message) => {
     const member = await guild.members.fetch(message.author.id).catch(() => null)
     if (!member) return
 
-    const hasNewcomer = config.roleNewcomer && member.roles.cache.has(config.roleNewcomer)
-    const hasMember = config.roleMember && member.roles.cache.has(config.roleMember)
-
-    if (hasNewcomer || !hasMember) {
-      await message.reply('Bora la! Vou continuar o questionario. 🔥')
-      await startOnboarding(member)
-    } else {
-      // Já tem acesso mas pode querer completar perfil
-      await message.reply('Bora completar teu perfil! 🔥')
-      await startOnboarding(member)
-    }
+    await message.reply('Bora la! Vou continuar o questionario. 🔥')
+    await startOnboarding(member)
   }
 })
 

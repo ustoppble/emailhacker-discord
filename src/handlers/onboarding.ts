@@ -1,7 +1,4 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   StringSelectMenuBuilder,
   GuildMember,
   TextChannel,
@@ -10,6 +7,9 @@ import {
   Message,
   ComponentType,
   StringSelectMenuInteraction,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ButtonInteraction,
 } from 'discord.js'
 import { config } from '../config'
@@ -365,92 +365,39 @@ async function runQuestions(
 }
 
 /**
- * Envia mensagem de boas-vindas no #gatekeeper com botão.
- * O clique do botão é tratado por handleOnboardingClick (chamado do index.ts).
+ * Cria thread privada no #gatekeeper e roda o questionário direto.
+ * Sem mensagem pública, sem botão — só a pessoa e o bot veem a thread.
  */
 export async function startOnboarding(member: GuildMember, isOG = false): Promise<void> {
   const userId = member.id
 
+  if (sessions.has(userId)) return
+  sessions.set(userId, true)
+
   const gatekeeperChannel = member.guild.channels.cache.get(config.channelGatekeeper) as TextChannel
   if (!gatekeeperChannel) {
     console.error('[ZERO] Canal #gatekeeper nao encontrado')
-    return
-  }
-
-  // Verifica estado no Supabase
-  const existing = await getOnboardingRecord(userId)
-
-  if (existing?.status === 'completed') {
-    // Já completou — só garante roles
-    if (config.roleMember) await member.roles.add(config.roleMember).catch(() => {})
-    if (config.roleNewcomer) await member.roles.remove(config.roleNewcomer).catch(() => {})
-    return
-  }
-
-  const isResume = existing && existing.current_step > 0
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`start_onboarding_${userId}${isOG ? '_og' : ''}`)
-      .setLabel(isResume ? '🔄 Continuar onboarding' : '🔓 Comecar onboarding')
-      .setStyle(ButtonStyle.Success)
-  )
-
-  await gatekeeperChannel.send({
-    content: isResume
-      ? `Hey <@${userId}>! Voce ja tinha comecado. 👋\n\n` +
-        '🔄 Bora continuar de onde parou?\n\n' +
-        '**Clica no botao abaixo** 👇'
-      : `Hey <@${userId}>! Bem-vindo! 👋\n\n` +
-        '🔒 Pra desbloquear os canais, responde umas perguntas rapidas.\n' +
-        'Leva menos de 2 minutos.\n\n' +
-        '**Clica no botao abaixo pra comecar** 👇',
-    components: [row],
-  })
-}
-
-/**
- * Tratado pelo InteractionCreate global no index.ts.
- * Cria thread e roda o questionário.
- */
-export async function handleOnboardingClick(interaction: ButtonInteraction): Promise<void> {
-  const userId = interaction.user.id
-  const isOG = interaction.customId.includes('_og')
-
-  if (sessions.has(userId)) {
-    await interaction.reply({ content: 'Voce ja tem um questionario em andamento!', ephemeral: true })
-    return
-  }
-  sessions.set(userId, true)
-
-  const guild = interaction.guild
-  if (!guild) {
-    sessions.delete(userId)
-    return
-  }
-
-  const member = await guild.members.fetch(userId).catch(() => null)
-  if (!member) {
-    sessions.delete(userId)
-    return
-  }
-
-  const gatekeeperChannel = guild.channels.cache.get(config.channelGatekeeper) as TextChannel
-  if (!gatekeeperChannel) {
     sessions.delete(userId)
     return
   }
 
   try {
-    // Verifica estado
+    // Verifica estado no Supabase
     let existing = await getOnboardingRecord(userId)
+
+    if (existing?.status === 'completed') {
+      if (config.roleMember) await member.roles.add(config.roleMember).catch(() => {})
+      if (config.roleNewcomer) await member.roles.remove(config.roleNewcomer).catch(() => {})
+      sessions.delete(userId)
+      return
+    }
 
     if (!existing || existing.status === 'timeout') {
       await createOnboardingRecord(userId, member.user.tag)
       existing = null
     }
 
-    // Cria thread privada
+    // Cria thread privada direto — sem mensagem pública
     const thread = await gatekeeperChannel.threads.create({
       name: `onboarding-${member.user.username}`,
       type: ChannelType.PrivateThread,
@@ -458,31 +405,11 @@ export async function handleOnboardingClick(interaction: ButtonInteraction): Pro
     })
     await thread.members.add(userId)
 
-    // Responde à interação
-    await interaction.reply({
-      content: `Bora! Vai pra ca 👉 <#${thread.id}>`,
-      ephemeral: true,
-    })
-
-    // Desabilita botão
-    const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(interaction.customId)
-        .setLabel('✅ Questionario iniciado')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(true)
-    )
-    await interaction.message.edit({ components: [disabledRow] }).catch(() => {})
-
-    // Roda questionário
+    // Roda questionário na thread
     await runQuestions(thread, member, isOG, existing)
   } catch (err) {
     if ((err as Error).message === 'timeout') {
-      // Timeout no gate (Q1-3) — não tem acesso ainda
       await markOnboardingTimeout(userId)
-      await gatekeeperChannel.send(
-        `<@${userId}> ⏰ Timeout! Quando quiser, clica no botao de novo ou manda uma DM pro bot.`
-      ).catch(() => {})
     } else {
       console.error(`[ZERO] Erro no onboarding de ${member.user.tag}:`, err)
     }
