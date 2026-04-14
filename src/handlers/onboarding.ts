@@ -15,6 +15,14 @@ import {
 import { config } from '../config'
 import { syncToAC } from '../services/ac-sync'
 import { isValidEmail, normalizePhone } from '../utils/validators'
+import {
+  getOnboardingRecord,
+  createOnboardingRecord,
+  saveOnboardingAnswer,
+  markOnboardingCompleted,
+  markOnboardingTimeout,
+  OnboardingRecord,
+} from '../services/supabase'
 
 interface OnboardingData {
   discord_id: string
@@ -135,109 +143,183 @@ async function askMultiSelect(
   return interaction.values
 }
 
-async function runQuestions(thread: ThreadChannel, member: GuildMember, isOG: boolean): Promise<void> {
+async function runQuestions(
+  thread: ThreadChannel,
+  member: GuildMember,
+  isOG: boolean,
+  existing: OnboardingRecord | null
+): Promise<void> {
   const userId = member.id
+  const startStep = existing?.current_step ?? 0
 
-  // Intro na thread
-  await thread.send(
-    '🔒 **Voce ta na porta do servidor.**\n\n' +
-    'Responde umas perguntas rapidas aqui pra desbloquear o acesso completo.\n' +
-    'Bora? 🔥\n\n' +
-    '━━━━━━━━━━━━━━━━━━━━━'
-  )
+  // Intro
+  if (startStep > 0) {
+    await thread.send(
+      '🔄 **Opa, voce ja tinha comecado!**\n\n' +
+      `Bora continuar de onde parou (pergunta ${startStep + 1}/10). 🔥\n\n` +
+      '━━━━━━━━━━━━━━━━━━━━━'
+    )
+  } else {
+    await thread.send(
+      '🔒 **Voce ta na porta do servidor.**\n\n' +
+      'Responde umas perguntas rapidas aqui pra desbloquear o acesso completo.\n' +
+      'Bora? 🔥\n\n' +
+      '━━━━━━━━━━━━━━━━━━━━━'
+    )
+  }
 
-  // 1. Nome
-  const name = await askText(thread, userId, '**1.** Qual teu nome?')
-  await thread.send(`Show, **${name}**! Bora continuar 🔥`)
+  // Step 0: Nome
+  let name: string
+  if (startStep <= 0) {
+    name = await askText(thread, userId, '**1.** Qual teu nome?')
+    await saveOnboardingAnswer(userId, 'name', name, 1)
+    await thread.send(`Show, **${name}**! Bora continuar 🔥`)
+  } else {
+    name = existing!.name!
+  }
 
-  // 2. Email
-  const email = await askText(
-    thread, userId,
-    '**2.** Teu melhor email?',
-    isValidEmail,
-    'Hmm, isso nao parece um email valido. Tenta de novo?'
-  )
-  await thread.send('Anotado ✅')
+  // Step 1: Email
+  let email: string
+  if (startStep <= 1) {
+    email = await askText(
+      thread, userId,
+      '**2.** Teu melhor email?',
+      isValidEmail,
+      'Hmm, isso nao parece um email valido. Tenta de novo?'
+    )
+    await saveOnboardingAnswer(userId, 'email', email, 2)
+    await thread.send('Anotado ✅')
+  } else {
+    email = existing!.email!
+  }
 
-  // 3. WhatsApp
-  const whatsappRaw = await askText(
-    thread, userId,
-    '**3.** Teu WhatsApp com DDD? (ex: 51999998888)',
-    (input) => normalizePhone(input) !== null,
-    'Preciso do numero com DDD (11 digitos). Ex: 51999998888'
-  )
-  const whatsapp = normalizePhone(whatsappRaw)!
-  await thread.send('📱 Salvo!')
+  // Step 2: WhatsApp
+  let whatsapp: string
+  if (startStep <= 2) {
+    const whatsappRaw = await askText(
+      thread, userId,
+      '**3.** Teu WhatsApp com DDD? (ex: 51999998888)',
+      (input) => normalizePhone(input) !== null,
+      'Preciso do numero com DDD (11 digitos). Ex: 51999998888'
+    )
+    whatsapp = normalizePhone(whatsappRaw)!
+    await saveOnboardingAnswer(userId, 'whatsapp', whatsapp, 3)
+    await thread.send('📱 Salvo!')
+  } else {
+    whatsapp = existing!.whatsapp!
+  }
 
-  // 4. Nivel tecnico
-  const nivel = await askButtons(thread, userId, '**4.** Qual teu nivel hoje?', [
-    { label: '🌱 Iniciante', value: 'iniciante' },
-    { label: '⚡ Intermediario', value: 'intermediario' },
-    { label: '🚀 Avancado', value: 'avancado' },
-  ])
+  // Step 3: Nivel tecnico
+  let nivel: string
+  if (startStep <= 3) {
+    nivel = await askButtons(thread, userId, '**4.** Qual teu nivel hoje?', [
+      { label: '🌱 Iniciante', value: 'iniciante' },
+      { label: '⚡ Intermediario', value: 'intermediario' },
+      { label: '🚀 Avancado', value: 'avancado' },
+    ])
+    await saveOnboardingAnswer(userId, 'nivel_tecnico', nivel, 4)
+  } else {
+    nivel = existing!.nivel_tecnico!
+  }
 
-  // 5. Ferramentas
-  const ferramentas = await askMultiSelect(
-    thread, userId,
-    '**5.** Quais ferramentas voce usa?',
-    [
-      { label: 'Claude Code', value: 'claude-code' },
-      { label: 'Codex', value: 'codex' },
-      { label: 'Lovable', value: 'lovable' },
-      { label: 'Cursor', value: 'cursor' },
-      { label: 'Bolt', value: 'bolt' },
-      { label: 'Outra', value: 'outra' },
-    ]
-  )
+  // Step 4: Ferramentas
+  let ferramentas: string[]
+  if (startStep <= 4) {
+    ferramentas = await askMultiSelect(
+      thread, userId,
+      '**5.** Quais ferramentas voce usa?',
+      [
+        { label: 'Claude Code', value: 'claude-code' },
+        { label: 'Codex', value: 'codex' },
+        { label: 'Lovable', value: 'lovable' },
+        { label: 'Cursor', value: 'cursor' },
+        { label: 'Bolt', value: 'bolt' },
+        { label: 'Outra', value: 'outra' },
+      ]
+    )
+    await saveOnboardingAnswer(userId, 'ferramentas', ferramentas, 5)
+  } else {
+    ferramentas = existing!.ferramentas!
+  }
 
-  // 6. Objetivo
-  const objetivo = await askButtons(thread, userId, '**6.** Qual teu objetivo principal?', [
-    { label: '📚 Aprender a codar', value: 'codar' },
-    { label: '💡 Criar SaaS', value: 'saas' },
-    { label: '💼 Freelance', value: 'freelance' },
-    { label: '⚙️ Automatizar negocio', value: 'automatizar' },
-  ])
+  // Step 5: Objetivo
+  let objetivo: string
+  if (startStep <= 5) {
+    objetivo = await askButtons(thread, userId, '**6.** Qual teu objetivo principal?', [
+      { label: '📚 Aprender a codar', value: 'codar' },
+      { label: '💡 Criar SaaS', value: 'saas' },
+      { label: '💼 Freelance', value: 'freelance' },
+      { label: '⚙️ Automatizar negocio', value: 'automatizar' },
+    ])
+    await saveOnboardingAnswer(userId, 'objetivo', objetivo, 6)
+  } else {
+    objetivo = existing!.objetivo!
+  }
 
-  // 7. Faixa de renda
-  const faixa = await askButtons(thread, userId, '**7.** Ja ganha dinheiro com software?', [
-    { label: 'Nao ainda', value: 'nao' },
-    { label: 'Ate R$1k/mes', value: 'ate-1k' },
-    { label: 'R$1k-5k', value: '1k-5k' },
-    { label: 'R$5k-10k', value: '5k-10k' },
-    { label: '+R$10k', value: '10k-plus' },
-  ])
+  // Step 6: Faixa de renda
+  let faixa: string
+  if (startStep <= 6) {
+    faixa = await askButtons(thread, userId, '**7.** Ja ganha dinheiro com software?', [
+      { label: 'Nao ainda', value: 'nao' },
+      { label: 'Ate R$1k/mes', value: 'ate-1k' },
+      { label: 'R$1k-5k', value: '1k-5k' },
+      { label: 'R$5k-10k', value: '5k-10k' },
+      { label: '+R$10k', value: '10k-plus' },
+    ])
+    await saveOnboardingAnswer(userId, 'faixa_renda', faixa, 7)
+  } else {
+    faixa = existing!.faixa_renda!
+  }
 
-  // 8. Maior dificuldade
-  const dor = await askButtons(thread, userId, '**8.** Qual tua maior dificuldade hoje?', [
-    { label: '💰 Aprender a vender', value: 'vender' },
-    { label: '🛠️ Construir o produto', value: 'construir' },
-    { label: '🧠 Saber o que criar', value: 'ideia' },
-    { label: '⏰ Ter tempo/foco', value: 'tempo' },
-    { label: '📣 Conseguir clientes', value: 'clientes' },
-  ])
+  // Step 7: Maior dificuldade
+  let dor: string
+  if (startStep <= 7) {
+    dor = await askButtons(thread, userId, '**8.** Qual tua maior dificuldade hoje?', [
+      { label: '💰 Aprender a vender', value: 'vender' },
+      { label: '🛠️ Construir o produto', value: 'construir' },
+      { label: '🧠 Saber o que criar', value: 'ideia' },
+      { label: '⏰ Ter tempo/foco', value: 'tempo' },
+      { label: '📣 Conseguir clientes', value: 'clientes' },
+    ])
+    await saveOnboardingAnswer(userId, 'maior_dificuldade', dor, 8)
+  } else {
+    dor = existing!.maior_dificuldade!
+  }
 
-  // 9. Como conheceu
-  const fonte = await askButtons(thread, userId, '**9.** Como me conheceu?', [
-    { label: '📺 YouTube', value: 'youtube' },
-    { label: '🤝 Indicacao', value: 'indicacao' },
-    { label: '📱 Rede social', value: 'rede-social' },
-    { label: '🔍 Outro', value: 'outro' },
-  ])
+  // Step 8: Como conheceu
+  let fonte: string
+  if (startStep <= 8) {
+    fonte = await askButtons(thread, userId, '**9.** Como me conheceu?', [
+      { label: '📺 YouTube', value: 'youtube' },
+      { label: '🤝 Indicacao', value: 'indicacao' },
+      { label: '📱 Rede social', value: 'rede-social' },
+      { label: '🔍 Outro', value: 'outro' },
+    ])
+    await saveOnboardingAnswer(userId, 'como_conheceu', fonte, 9)
+  } else {
+    fonte = existing!.como_conheceu!
+  }
 
-  // 10. Pergunta aberta (texto livre)
-  await thread.sendTyping().catch(() => {})
-  console.log(`[ZERO] Pergunta 10 (texto livre) para ${member.user.tag}`)
-  const oQueQuer = await askText(
-    thread, userId,
-    '**Ultima pergunta!**\n\n' +
-    '**O que voce quer que eu crie/venda pra voce?**\n' +
-    'O que voce quer consumir de mim? Pode mandar tudo, sem filtro.\n\n' +
-    '👇 **Digita tua resposta aqui embaixo:**'
-  )
-  console.log(`[ZERO] Resposta recebida de ${member.user.tag}: "${oQueQuer.slice(0, 50)}..."`)
-  await thread.send('✅ Anotado! Processando teu acesso...')
+  // Step 9: Pergunta aberta
+  let oQueQuer: string
+  if (startStep <= 9) {
+    await thread.sendTyping().catch(() => {})
+    console.log(`[ZERO] Pergunta 10 (texto livre) para ${member.user.tag}`)
+    oQueQuer = await askText(
+      thread, userId,
+      '**Ultima pergunta!**\n\n' +
+      '**O que voce quer que eu crie/venda pra voce?**\n' +
+      'O que voce quer consumir de mim? Pode mandar tudo, sem filtro.\n\n' +
+      '👇 **Digita tua resposta aqui embaixo:**'
+    )
+    console.log(`[ZERO] Resposta recebida de ${member.user.tag}: "${oQueQuer.slice(0, 50)}..."`)
+    await saveOnboardingAnswer(userId, 'o_que_quer', oQueQuer, 10)
+    await thread.send('✅ Anotado! Processando teu acesso...')
+  } else {
+    oQueQuer = existing!.o_que_quer!
+  }
 
-  // Monta dados
+  // Monta dados completos
   const data: OnboardingData = {
     discord_id: userId,
     discord_username: member.user.tag,
@@ -255,6 +337,9 @@ async function runQuestions(thread: ThreadChannel, member: GuildMember, isOG: bo
 
   // Sync pro AC
   await syncToAC(data)
+
+  // Marca completo no Supabase
+  await markOnboardingCompleted(userId)
 
   // Libera acesso
   if (config.roleMember) {
@@ -316,20 +401,41 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
   }
 
   try {
+    // Verifica se tem onboarding parcial
+    const existing = await getOnboardingRecord(userId)
+
+    if (existing?.status === 'completed') {
+      // Ja completou — so garante roles
+      if (config.roleMember) await member.roles.add(config.roleMember).catch(() => {})
+      if (config.roleNewcomer) await member.roles.remove(config.roleNewcomer).catch(() => {})
+      sessions.delete(userId)
+      return
+    }
+
+    const isResume = existing && (existing.status === 'in_progress' || existing.status === 'started') && existing.current_step > 0
+
+    if (!isResume) {
+      // Novo onboarding — cria/reseta record
+      await createOnboardingRecord(userId, member.user.tag)
+    }
+
     // Mensagem de boas-vindas no #gatekeeper com botao
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`start_onboarding_${userId}`)
-        .setLabel('🔓 Comecar onboarding')
+        .setLabel(isResume ? '🔄 Continuar onboarding' : '🔓 Comecar onboarding')
         .setStyle(ButtonStyle.Success)
     )
 
     const welcomeMsg = await gatekeeperChannel.send({
-      content:
-        `Hey <@${userId}>! Bem-vindo! 👋\n\n` +
-        '🔒 Pra desbloquear os canais, preciso te conhecer rapidinho.\n' +
-        'Leva menos de 2 minutos.\n\n' +
-        '**Clica no botao abaixo pra comecar** 👇',
+      content: isResume
+        ? `Hey <@${userId}>! Voce ja tinha comecado o questionario. 👋\n\n` +
+          '🔄 Bora continuar de onde parou?\n\n' +
+          '**Clica no botao abaixo** 👇'
+        : `Hey <@${userId}>! Bem-vindo! 👋\n\n` +
+          '🔒 Pra desbloquear os canais, preciso te conhecer rapidinho.\n' +
+          'Leva menos de 2 minutos.\n\n' +
+          '**Clica no botao abaixo pra comecar** 👇',
       components: [row],
     })
 
@@ -364,12 +470,13 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
     )
     await welcomeMsg.edit({ components: [disabledRow] })
 
-    // Roda perguntas na thread
-    await runQuestions(thread, member, isOG)
+    // Roda perguntas na thread (com resume se existir)
+    await runQuestions(thread, member, isOG, isResume ? existing : null)
   } catch (err) {
     if ((err as Error).message === 'timeout') {
+      await markOnboardingTimeout(userId)
       await gatekeeperChannel.send(
-        `<@${userId}> ⏰ Timeout! Sai e entra no servidor de novo pra recomecar.`
+        `<@${userId}> ⏰ Timeout! Quando quiser continuar, e so mandar uma DM pro bot.`
       ).catch(() => {})
     } else {
       console.error(`[ZERO] Erro no onboarding de ${member.user.tag}:`, err)
