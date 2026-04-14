@@ -309,23 +309,10 @@ async function runQuestions(
     oQueQuer = existing!.o_que_quer!
   }
 
-  // ===== TUDO RESPONDIDO: libera acesso =====
-  await thread.send('✅ Show! Processando teu acesso...')
-
-  // Libera roles
-  if (config.roleMember) {
-    await member.roles.add(config.roleMember).catch(() => {})
-  }
-  if (config.roleNewcomer) {
-    await member.roles.remove(config.roleNewcomer).catch(() => {})
-  }
-  if (isOG && config.roleOG) {
-    await member.roles.add(config.roleOG).catch(() => {})
-  }
-
-  // Mensagem final
+  // ===== TUDO RESPONDIDO: manda mensagem final ANTES de trocar roles =====
+  // (trocar roles remove acesso ao #gatekeeper, usuario perderia a thread)
   await thread.send(
-    '━━━━━━━━━━━━━━━━━━━━━\n\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
     `🔓 **Canal liberado, ${name}!**\n\n` +
     (isOG ? '🏆 Voce ganhou o cargo **OG** — Original Gangster. Respeito.\n\n' : '') +
     `Agora te apresenta no <#${config.channelGeneral}> pro pessoal te conhecer!\n\n` +
@@ -339,6 +326,17 @@ async function runQuestions(
     '```\n\n' +
     '👆 Copia, cola na IA, e posta o resultado la. Bora! 🚀'
   )
+
+  // Libera roles (usuario perde acesso ao gatekeeper aqui)
+  if (config.roleMember) {
+    await member.roles.add(config.roleMember).catch(() => {})
+  }
+  if (config.roleNewcomer) {
+    await member.roles.remove(config.roleNewcomer).catch(() => {})
+  }
+  if (isOG && config.roleOG) {
+    await member.roles.add(config.roleOG).catch(() => {})
+  }
 
   // Marca completo + anúncio em BACKGROUND (AC já foi sync incrementalmente)
   Promise.all([
@@ -355,11 +353,6 @@ async function runQuestions(
       }
     })(),
   ]).catch((err) => console.error('[ZERO] Erro no sync background:', err))
-
-  // Arquiva thread apos 30s
-  setTimeout(async () => {
-    await thread.setArchived(true).catch(() => {})
-  }, 30_000)
 
   console.log(`[ZERO] Onboarding completo: ${member.user.tag} (${name})`)
 }
