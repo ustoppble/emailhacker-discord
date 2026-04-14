@@ -204,17 +204,7 @@ async function runQuestions(
 
   // ===== GATE PASSADO: libera acesso =====
   if (startStep <= 2) {
-    // Sync pro AC (cria contato + tag parcial)
-    await syncGateToAC({
-      email, name, whatsapp,
-      discord_id: userId,
-      discord_username: member.user.tag,
-    })
-
-    // Marca gate completo no Supabase
-    await markGateComplete(userId)
-
-    // Libera roles
+    // Libera roles PRIMEIRO (instantâneo pro usuário)
     if (config.roleMember) {
       await member.roles.add(config.roleMember).catch(() => {})
     }
@@ -225,16 +215,6 @@ async function runQuestions(
       await member.roles.add(config.roleOG).catch(() => {})
     }
 
-    // Anuncia no geral
-    if (config.channelGeneral) {
-      const generalChannel = member.guild.channels.cache.get(config.channelGeneral)
-      if (generalChannel?.isTextBased() && 'send' in generalChannel) {
-        await (generalChannel as any).send(
-          `🆕 **${name}** acabou de entrar no servidor! Boas-vindas! 🔥`
-        )
-      }
-    }
-
     await thread.send(
       '━━━━━━━━━━━━━━━━━━━━━\n\n' +
       `🔓 **ACESSO LIBERADO, ${name}!**\n\n` +
@@ -242,6 +222,26 @@ async function runQuestions(
       'Agora me ajuda a te ajudar melhor — responde mais umas perguntas rapidas?\n' +
       'Teu acesso ja ta liberado, isso aqui e pra eu te conhecer melhor. 👇'
     )
+
+    // AC sync + Supabase + anúncio rodam em BACKGROUND (não trava o fluxo)
+    Promise.all([
+      syncGateToAC({
+        email, name, whatsapp,
+        discord_id: userId,
+        discord_username: member.user.tag,
+      }),
+      markGateComplete(userId),
+      (async () => {
+        if (config.channelGeneral) {
+          const generalChannel = member.guild.channels.cache.get(config.channelGeneral)
+          if (generalChannel?.isTextBased() && 'send' in generalChannel) {
+            await (generalChannel as any).send(
+              `🆕 **${name}** acabou de entrar no servidor! Boas-vindas! 🔥`
+            )
+          }
+        }
+      })(),
+    ]).catch((err) => console.error('[ZERO] Erro no background do gate:', err))
   }
 
   // ===== PERFIL: Q4-10 (opcionais mas incentivadas) =====
@@ -256,7 +256,7 @@ async function runQuestions(
         { label: '🚀 Avancado', value: 'avancado' },
       ])
       await saveOnboardingAnswer(userId, 'nivel_tecnico', nivel, 4)
-      await updateACField(email, 'nivel_tecnico', nivel)
+      updateACField(email, 'nivel_tecnico', nivel).catch(() => {})
     } else {
       nivel = existing!.nivel_tecnico!
     }
@@ -277,7 +277,7 @@ async function runQuestions(
         ]
       )
       await saveOnboardingAnswer(userId, 'ferramentas', ferramentas, 5)
-      await updateACField(email, 'ferramentas', ferramentas.join(', '))
+      updateACField(email, 'ferramentas', ferramentas.join(', ')).catch(() => {})
     } else {
       ferramentas = existing!.ferramentas!
     }
@@ -292,7 +292,7 @@ async function runQuestions(
         { label: '⚙️ Automatizar negocio', value: 'automatizar' },
       ])
       await saveOnboardingAnswer(userId, 'objetivo', objetivo, 6)
-      await updateACField(email, 'objetivo', objetivo)
+      updateACField(email, 'objetivo', objetivo).catch(() => {})
     } else {
       objetivo = existing!.objetivo!
     }
@@ -307,7 +307,7 @@ async function runQuestions(
         { label: '+R$10k', value: '10k-plus' },
       ])
       await saveOnboardingAnswer(userId, 'faixa_renda', faixa, 7)
-      await updateACField(email, 'faixa_renda', faixa)
+      updateACField(email, 'faixa_renda', faixa).catch(() => {})
     }
 
     // Step 7: Maior dificuldade
@@ -320,7 +320,7 @@ async function runQuestions(
         { label: '📣 Conseguir clientes', value: 'clientes' },
       ])
       await saveOnboardingAnswer(userId, 'maior_dificuldade', dor, 8)
-      await updateACField(email, 'maior_dificuldade', dor)
+      updateACField(email, 'maior_dificuldade', dor).catch(() => {})
     }
 
     // Step 8: Como conheceu
@@ -332,7 +332,7 @@ async function runQuestions(
         { label: '🔍 Outro', value: 'outro' },
       ])
       await saveOnboardingAnswer(userId, 'como_conheceu', fonte, 9)
-      await updateACField(email, 'como_conheceu', fonte)
+      updateACField(email, 'como_conheceu', fonte).catch(() => {})
     }
 
     // Step 9: Pergunta aberta
@@ -346,7 +346,7 @@ async function runQuestions(
         '👇 **Digita tua resposta aqui embaixo:**'
       )
       await saveOnboardingAnswer(userId, 'o_que_quer', oQueQuer, 10)
-      await updateACField(email, 'o_que_quer', oQueQuer)
+      updateACField(email, 'o_que_quer', oQueQuer).catch(() => {})
     }
 
     // ===== PERFIL COMPLETO =====
