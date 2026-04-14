@@ -111,6 +111,22 @@ export async function saveOnboardingAnswer(
   }
 }
 
+export async function markGateComplete(discordId: string): Promise<void> {
+  if (!config.supabaseUrl) return
+
+  try {
+    await supabaseRequest(
+      `discord_onboarding?discord_id=eq.${discordId}`,
+      'PATCH',
+      { status: 'gate_complete', gate_completed_at: new Date().toISOString() },
+      { 'Prefer': 'return=minimal' }
+    )
+    console.log(`[SUPA] 🔓 Gate completo: ${discordId}`)
+  } catch (err) {
+    console.error('[SUPA] Erro ao marcar gate completo:', err)
+  }
+}
+
 export async function markOnboardingCompleted(discordId: string): Promise<void> {
   if (!config.supabaseUrl) return
 
