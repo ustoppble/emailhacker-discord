@@ -68,7 +68,7 @@ client.on(Events.MessageCreate, async (message) => {
     const hasMember = config.roleMember && member.roles.cache.has(config.roleMember)
 
     if (hasNewcomer || !hasMember) {
-      await message.reply('Bora la! Vou recomecar o questionario. 🔥')
+      await message.reply('Bora la! Vou continuar o questionario. 🔥')
       await startOnboarding(member)
     }
   }
