@@ -127,17 +127,13 @@ export async function syncGateToAC(data: {
 
     console.log(`[AC] Contato criado/atualizado: ${data.email} (ID: ${contact.id})`)
 
-    // Listas
-    for (const listId of ['83', '127']) {
-      await acRequest('contactLists', 'POST', {
-        contactList: { list: listId, contact: contact.id, status: 1 },
-      }).catch(() => {})
-    }
+    // Lista All
+    await acRequest('contactLists', 'POST', {
+      contactList: { list: '83', contact: contact.id, status: 1 },
+    }).catch(() => {})
 
-    // Tags
-    for (const tagName of ['discord-member', 'fonte:discord', 'discord-onboarding-parcial']) {
-      await addTag(contact.id, tagName)
-    }
+    // Tag
+    await addTag(contact.id, 'discord-member')
 
     console.log(`[AC] ✅ Gate sync completo: ${data.email}`)
   } catch (err) {
@@ -170,24 +166,13 @@ export async function updateACField(email: string, fieldKey: string, value: stri
 /**
  * Marca onboarding completo no AC: adiciona tags de conclusão e segmentação.
  */
-export async function markACOnboardingComplete(
-  email: string,
-  nivelTecnico: string,
-  objetivo: string
-): Promise<void> {
+export async function markACOnboardingComplete(email: string): Promise<void> {
   try {
     const { contacts } = await acRequest(`contacts?email=${encodeURIComponent(email)}`, 'GET')
     const contactId = contacts?.[0]?.id
     if (!contactId) return
 
-    for (const tagName of [
-      'discord-onboarding-completo',
-      'audiencia:vibe-coder',
-      `nivel:${nivelTecnico}`,
-      `objetivo:${objetivo}`,
-    ]) {
-      await addTag(contactId, tagName)
-    }
+    await addTag(contactId, 'discord-onboarding-completo')
 
     console.log(`[AC] ✅ Onboarding completo: ${email}`)
   } catch (err) {
