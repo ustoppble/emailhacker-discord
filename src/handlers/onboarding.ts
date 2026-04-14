@@ -189,6 +189,9 @@ async function runQuestions(
     )
     whatsapp = normalizePhone(whatsappRaw)!
     await saveOnboardingAnswer(userId, 'whatsapp', whatsapp, 3)
+    // AC sync em background — cria contato com nome+email+whatsapp+tag parcial
+    syncGateToAC({ email, name, whatsapp, discord_id: userId, discord_username: member.user.tag })
+      .catch((err) => console.error('[ZERO] Erro no AC gate sync:', err))
   } else {
     whatsapp = existing!.whatsapp!
   }
@@ -202,6 +205,7 @@ async function runQuestions(
       { label: '🚀 Avancado', value: 'avancado' },
     ])
     await saveOnboardingAnswer(userId, 'nivel_tecnico', nivel, 4)
+    updateACField(email, 'nivel_tecnico', nivel).catch(() => {})
   } else {
     nivel = existing!.nivel_tecnico!
   }
@@ -222,6 +226,7 @@ async function runQuestions(
       ]
     )
     await saveOnboardingAnswer(userId, 'ferramentas', ferramentas, 5)
+    updateACField(email, 'ferramentas', ferramentas.join(', ')).catch(() => {})
   } else {
     ferramentas = existing!.ferramentas!
   }
@@ -236,6 +241,7 @@ async function runQuestions(
       { label: '⚙️ Automatizar negocio', value: 'automatizar' },
     ])
     await saveOnboardingAnswer(userId, 'objetivo', objetivo, 6)
+    updateACField(email, 'objetivo', objetivo).catch(() => {})
   } else {
     objetivo = existing!.objetivo!
   }
@@ -251,6 +257,7 @@ async function runQuestions(
       { label: '+R$10k', value: '10k-plus' },
     ])
     await saveOnboardingAnswer(userId, 'faixa_renda', faixa, 7)
+    updateACField(email, 'faixa_renda', faixa).catch(() => {})
   } else {
     faixa = existing!.faixa_renda!
   }
@@ -266,6 +273,7 @@ async function runQuestions(
       { label: '📣 Conseguir clientes', value: 'clientes' },
     ])
     await saveOnboardingAnswer(userId, 'maior_dificuldade', dor, 8)
+    updateACField(email, 'maior_dificuldade', dor).catch(() => {})
   } else {
     dor = existing!.maior_dificuldade!
   }
@@ -280,6 +288,7 @@ async function runQuestions(
       { label: '🔍 Outro', value: 'outro' },
     ])
     await saveOnboardingAnswer(userId, 'como_conheceu', fonte, 9)
+    updateACField(email, 'como_conheceu', fonte).catch(() => {})
   } else {
     fonte = existing!.como_conheceu!
   }
@@ -295,6 +304,7 @@ async function runQuestions(
       '👇 **Digita tua resposta aqui embaixo:**'
     )
     await saveOnboardingAnswer(userId, 'o_que_quer', oQueQuer, 10)
+    updateACField(email, 'o_que_quer', oQueQuer).catch(() => {})
   } else {
     oQueQuer = existing!.o_que_quer!
   }
@@ -330,21 +340,10 @@ async function runQuestions(
     '👆 Copia, cola na IA, e posta o resultado la. Bora! 🚀'
   )
 
-  // AC sync + Supabase + anúncio em BACKGROUND
+  // Marca completo + anúncio em BACKGROUND (AC já foi sync incrementalmente)
   Promise.all([
-    syncGateToAC({ email, name, whatsapp, discord_id: userId, discord_username: member.user.tag }),
     markOnboardingCompleted(userId),
     markACOnboardingComplete(email, nivel, objetivo),
-    (async () => {
-      // Atualiza todos os campos bonus no AC
-      await updateACField(email, 'nivel_tecnico', nivel)
-      await updateACField(email, 'ferramentas', ferramentas.join(', '))
-      await updateACField(email, 'objetivo', objetivo)
-      await updateACField(email, 'faixa_renda', faixa)
-      await updateACField(email, 'maior_dificuldade', dor)
-      await updateACField(email, 'como_conheceu', fonte)
-      await updateACField(email, 'o_que_quer', oQueQuer)
-    })(),
     (async () => {
       if (config.channelGeneral) {
         const generalChannel = member.guild.channels.cache.get(config.channelGeneral)
