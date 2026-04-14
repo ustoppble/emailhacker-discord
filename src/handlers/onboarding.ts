@@ -374,6 +374,8 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
     return
   }
 
+  let thread: ThreadChannel | null = null
+
   try {
     // Verifica estado no Supabase
     let existing = await getOnboardingRecord(userId)
@@ -391,7 +393,7 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
     }
 
     // Cria thread privada
-    const thread = await gatekeeperChannel.threads.create({
+    thread = await gatekeeperChannel.threads.create({
       name: `onboarding-${member.user.username}`,
       type: ChannelType.PrivateThread,
       reason: `Onboarding de ${member.user.tag}`,
@@ -409,6 +411,54 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
   } catch (err) {
     if ((err as Error).message === 'timeout') {
       await markOnboardingTimeout(userId)
+      if (thread) {
+        // Se ja passou do gate (Q1-3: nome, email, whatsapp), libera acesso
+        const record = await getOnboardingRecord(userId).catch(() => null)
+        if (record && record.current_step >= 3) {
+          if (config.roleMember) await member.roles.add(config.roleMember).catch(() => {})
+          if (config.roleNewcomer) await member.roles.remove(config.roleNewcomer).catch(() => {})
+          await markOnboardingCompleted(userId)
+          await thread.send(
+            '⏰ **Demorou, mas ta tudo certo!**\n\n' +
+            `🔓 **Canal liberado, ${record.name}!**\n\n` +
+            `Vai la no <#${config.channelGeneral}> e se apresenta pro pessoal! 🚀`
+          ).catch(() => {})
+          if (config.channelGeneral) {
+            const generalChannel = member.guild.channels.cache.get(config.channelGeneral)
+            if (generalChannel?.isTextBased() && 'send' in generalChannel) {
+              await (generalChannel as any).send(
+                `🆕 **${record.name}** acabou de entrar no servidor! Boas-vindas! 🔥`
+              ).catch(() => {})
+            }
+          }
+        } else {
+          // Nao completou o gate — botao pra continuar
+          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`onb_resume_${userId}`)
+              .setLabel('🔄 Continuar onboarding')
+              .setStyle(ButtonStyle.Primary)
+          )
+          const timeoutMsg = await thread.send({
+            content:
+              '⏰ **Demorou demais!**\n\n' +
+              'Sem problema — teu onboarding ficou salvo.\n' +
+              'Clica no botao abaixo quando quiser continuar de onde parou.',
+            components: [row],
+          }).catch(() => null)
+
+          if (timeoutMsg) {
+            timeoutMsg.awaitMessageComponent({
+              componentType: ComponentType.Button,
+              filter: (i) => i.user.id === userId,
+              time: 24 * 60 * 60 * 1000, // 24h
+            }).then(async (interaction) => {
+              await interaction.update({ components: [] })
+              await startOnboarding(member, isOG)
+            }).catch(() => {})
+          }
+        }
+      }
     } else {
       console.error(`[ZERO] Erro no onboarding de ${member.user.tag}:`, err)
     }
