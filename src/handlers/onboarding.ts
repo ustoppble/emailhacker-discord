@@ -343,7 +343,7 @@ async function runQuestions(
   // Marca completo + anúncio em BACKGROUND (AC já foi sync incrementalmente)
   Promise.all([
     markOnboardingCompleted(userId),
-    markACOnboardingComplete(email, nivel, objetivo),
+    markACOnboardingComplete(email),
     (async () => {
       if (config.channelGeneral) {
         const generalChannel = member.guild.channels.cache.get(config.channelGeneral)
@@ -397,13 +397,22 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
       existing = null
     }
 
-    // Cria thread privada direto — sem mensagem pública
+    // Cria thread privada
     const thread = await gatekeeperChannel.threads.create({
       name: `onboarding-${member.user.username}`,
       type: ChannelType.PrivateThread,
       reason: `Onboarding de ${member.user.tag}`,
     })
     await thread.members.add(userId)
+
+    // Boas-vindas no gatekeeper com link pra thread
+    const welcomeMsg = await gatekeeperChannel.send(
+      `Hey <@${userId}>! Bem-vindo! 👋\n\n` +
+      `Responde umas perguntas rapidas pra desbloquear o acesso 👉 <#${thread.id}>`
+    )
+
+    // Remove a mensagem após 30s pra manter o canal limpo
+    setTimeout(() => welcomeMsg.delete().catch(() => {}), 30_000)
 
     // Roda questionário na thread
     await runQuestions(thread, member, isOG, existing)
