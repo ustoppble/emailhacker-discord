@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true
+  },
+  "include": ["src/index.ts", "src/config.ts", "src/handlers/**/*", "src/services/**/*", "src/utils/**/*"],
+  "exclude": ["node_modules", "dist", "src/test-*", "src/fix-*", "src/kick-*", "src/setup*", "src/check-*", "src/create-*", "src/rename-*", "src/recreate-*", "src/show-*"]
+}
