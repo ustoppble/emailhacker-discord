@@ -405,14 +405,11 @@ export async function startOnboarding(member: GuildMember, isOG = false): Promis
     })
     await thread.members.add(userId)
 
-    // Boas-vindas no gatekeeper com link pra thread
-    const welcomeMsg = await gatekeeperChannel.send(
+    // Boas-vindas no gatekeeper com link pra thread (fica visível — prova social)
+    await gatekeeperChannel.send(
       `Hey <@${userId}>! Bem-vindo! 👋\n\n` +
       `Responde umas perguntas rapidas pra desbloquear o acesso 👉 <#${thread.id}>`
     )
-
-    // Remove a mensagem após 30s pra manter o canal limpo
-    setTimeout(() => welcomeMsg.delete().catch(() => {}), 30_000)
 
     // Roda questionário na thread
     await runQuestions(thread, member, isOG, existing)
