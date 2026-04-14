@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { homedir } from 'os'
 
 function loadSecrets(): Record<string, string> {
   // Em producao: usa env vars direto
@@ -8,7 +9,7 @@ function loadSecrets(): Record<string, string> {
     return process.env as Record<string, string>
   }
 
-  const secretsPath = resolve(__dirname, '../../../.secrets')
+  const secretsPath = resolve(homedir(), '.secrets/emailhacker')
   try {
     const content = readFileSync(secretsPath, 'utf-8')
     const secrets: Record<string, string> = {}
