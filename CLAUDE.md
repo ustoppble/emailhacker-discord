@@ -45,9 +45,17 @@ npm start        # roda o bot (node dist/index.js)
 - **Supabase** (projeto `waawkqvfkzblsogemjlw`): tabela `discord_onboarding`
 - **ActiveCampaign** (conta laschuk): lista 83 (All), campos `[DISC] *`, tags `discord-member` e `discord-onboarding-completo`
 
+## Resiliencia
+
+- **Crash handlers:** `uncaughtException` loga e faz exit(1), `unhandledRejection` loga sem matar o processo
+- **Container restart:** Coolify reinicia o container automaticamente se o processo morrer
+- **Health check desabilitado:** bot nao tem HTTP server, health check causava falso `unhealthy`
+- **Reconexao Discord:** discord.js reconecta automaticamente se o WebSocket cair
+
 ## Cuidados
 
 - O `sessions` Map em memoria protege contra eventos duplicados, mas reseta no restart
 - Se o bot reconectar ao Discord, pode receber eventos pendentes — o Map impede duplicacao dentro da mesma sessao
-- Timeout de onboarding: dados parciais ficam no Supabase, retoma de onde parou na proxima entrada
+- Timeout inteligente: se ja respondeu Q1-Q3 (nome/email/whatsapp) e deu timeout, libera acesso direto. Se nao completou Q3, mostra botao "Continuar onboarding" (ativo 24h)
 - Thread privada fica aberta apos onboarding (usuario fecha quando quiser)
+- **NUNCA deletar a app do Coolify** sem confirmar que o bot nao esta rodando em outra sessao

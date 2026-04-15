@@ -30,9 +30,9 @@ src/
 
 ## Deploy
 
-Roda no **Coolify** (Docker) na VPS. Conexão WebSocket com Discord API (sem porta HTTP exposta).
+Roda no **Coolify** (Docker) na VPS. Conexao WebSocket com Discord API (sem porta HTTP exposta).
 
-**IMPORTANTE:** Sempre usar **stop + start** no Coolify, nunca restart. Rolling update mantém 2 containers vivos com o mesmo bot token → mensagens duplicadas.
+**IMPORTANTE:** Sempre usar **stop + start** no Coolify, nunca restart. Rolling update mantem 2 containers vivos com o mesmo bot token → mensagens duplicadas.
 
 ```bash
 # Dev local
@@ -40,7 +40,19 @@ npm install && npm run dev
 
 # Build
 npm run build && node dist/index.js
+
+# Deploy (via Coolify API)
+POST /api/v1/applications/{uuid}/stop
+POST /api/v1/applications/{uuid}/start
 ```
+
+## Resiliencia
+
+- **Crash handlers:** `uncaughtException` loga e reinicia, `unhandledRejection` loga sem matar
+- **Auto-restart:** Container reinicia automaticamente se o processo morrer
+- **Health check desabilitado:** bot nao tem HTTP server
+- **Reconexao:** discord.js reconecta WebSocket automaticamente
+- **Timeout inteligente:** se ja respondeu nome/email/whatsapp e deu timeout, libera acesso direto
 
 ## Variáveis de ambiente
 
