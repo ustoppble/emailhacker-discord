@@ -14,7 +14,7 @@ npm start        # roda o bot (node dist/index.js)
 
 ## Deploy
 
-- **Coolify** (Docker) — app UUID: `pbpihxge3seq5i4n8mdad3sk`
+- **Coolify** (Docker) — app UUID: `b4hue1u3dnqqamaql1hnnmmb`
 - **NUNCA usar restart** — sempre stop + start (rolling update causa container duplo com mesmo bot token = mensagens duplicadas)
 - Deploy via Coolify API:
   - `POST /api/v1/applications/{uuid}/stop`

@@ -64,6 +64,15 @@ client.on(Events.MessageCreate, async (message) => {
   }
 })
 
+// Crash handlers — loga e deixa o container reiniciar
+process.on('uncaughtException', (err) => {
+  console.error('[ZERO] uncaughtException:', err)
+  process.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[ZERO] unhandledRejection:', reason)
+})
+
 // Login
 client.login(config.botToken).catch((err) => {
   console.error('[ZERO] Falha no login:', err.message)
