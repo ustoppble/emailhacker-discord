@@ -32,8 +32,6 @@ async function sendHeartbeat(client: Client): Promise<void> {
     if (!res.ok) {
       const text = await res.text()
       console.error(`[ZERO] heartbeat falhou: ${res.status} — ${text}`)
-    } else {
-      console.log('[ZERO] heartbeat OK')
     }
   } catch (err) {
     console.error('[ZERO] heartbeat erro:', err)
