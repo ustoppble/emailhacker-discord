@@ -42,7 +42,7 @@ npm start        # roda o bot (node dist/index.js)
 
 ## Integracoes
 
-- **Supabase** (projeto `waawkqvfkzblsogemjlw`): tabela `discord_onboarding`
+- **Supabase Brain** (projeto `atrqyavpbjwpjsewwcrj`, mesmo do cockpit): tabelas `discord_onboarding` e `worker_heartbeats` (heartbeat do bot a cada 60s para o Overclock monitorar)
 - **ActiveCampaign** (conta laschuk): lista 83 (All), campos `[DISC] *`, tags `discord-member` e `discord-onboarding-completo`
 
 ## Resiliencia
