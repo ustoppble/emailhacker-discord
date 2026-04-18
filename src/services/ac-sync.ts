@@ -107,7 +107,7 @@ export async function syncGateToAC(data: {
   whatsapp: string
   discord_id: string
   discord_username: string
-}): Promise<void> {
+}): Promise<string | null> {
   try {
     console.log(`[AC] Gate sync: ${data.email}...`)
 
@@ -136,8 +136,10 @@ export async function syncGateToAC(data: {
     await addTag(contact.id, 'discord-member')
 
     console.log(`[AC] ✅ Gate sync completo: ${data.email}`)
+    return contact.id ?? null
   } catch (err) {
     console.error('[AC] ❌ Erro no gate sync:', err)
+    return null
   }
 }
 
