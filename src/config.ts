@@ -49,6 +49,6 @@ export const config = {
   acAccount: secrets.AC_LASCHUK_ACCOUNT || '',
   acApiKey: secrets.AC_LASCHUK_API_KEY || '',
 
-  supabaseUrl: secrets.SUPABASE_URL || '',
-  supabaseServiceKey: secrets.SUPABASE_SERVICE_ROLE_KEY || '',
+  supabaseUrl: secrets.SUPABASE_BRAIN_URL || '',
+  supabaseServiceKey: secrets.SUPABASE_BRAIN_SERVICE_KEY || '',
 }

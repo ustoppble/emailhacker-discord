@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, Events } from 'discord.js'
 import { config } from './config'
 import { startOnboarding } from './handlers/onboarding'
 import { sendOGInvite } from './handlers/og-invite'
+import { startHeartbeat } from './heartbeat'
 
 const client = new Client({
   intents: [
@@ -34,6 +35,8 @@ client.once(Events.ClientReady, (c) => {
     })
     console.log('')
   }
+
+  startHeartbeat(c)
 })
 
 // Novo membro entra no servidor → thread privada + onboarding direto
