@@ -24,9 +24,17 @@ src/
   services/
     ac-sync.ts          — sync com ActiveCampaign (contact/sync, fields, tags)
     supabase.ts         — CRUD na tabela discord_onboarding (saves incrementais)
+  heartbeat.ts          — upsert em worker_heartbeats a cada 60s (cockpit monitora)
   utils/
     validators.ts       — validação de email e telefone
 ```
+
+## Persistencia
+
+Bot escreve no **Supabase Brain** (`atrqyavpbjwpjsewwcrj`), mesmo projeto do cockpit/Overclock. Tabelas:
+
+- `discord_onboarding` — 1 row por usuario, updates incrementais por pergunta
+- `worker_heartbeats` — 1 row `worker_id='discord'`, upsert a cada 60s com `guilds` e `uptime` em `metadata` (permite cockpit saber se o bot esta vivo sem HTTP)
 
 ## Deploy
 
@@ -70,8 +78,8 @@ Em dev: carrega de `~/.secrets/emailhacker`. No Coolify: env vars no painel.
 | `DISCORD_CHANNEL_GENERAL` | Sim | Canal geral (anúncios + invite OG) |
 | `AC_LASCHUK_ACCOUNT` | Sim | Conta ActiveCampaign (subdomain) |
 | `AC_LASCHUK_API_KEY` | Sim | API key do ActiveCampaign |
-| `SUPABASE_URL` | Sim | URL do projeto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Sim | Service role key do Supabase |
+| `SUPABASE_BRAIN_URL` | Sim | URL do projeto Brain (`atrqyavpbjwpjsewwcrj`) |
+| `SUPABASE_BRAIN_SERVICE_KEY` | Sim | Service role key do Brain |
 
 ## Stack
 
