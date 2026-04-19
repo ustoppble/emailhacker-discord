@@ -10,4 +10,6 @@ COPY src/ ./src/
 
 RUN npx tsc
 
+EXPOSE 8787
+
 CMD ["node", "dist/index.js"]

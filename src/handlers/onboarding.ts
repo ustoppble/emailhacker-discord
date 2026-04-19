@@ -26,7 +26,7 @@ import {
 import { logActivity, hashEmail } from '../activity-log'
 
 // Sessoes ativas
-const sessions = new Map<string, boolean>()
+export const sessions = new Map<string, boolean>()
 
 const TIMEOUT = 10 * 60 * 1000
 

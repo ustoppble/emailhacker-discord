@@ -143,6 +143,22 @@ export async function markOnboardingCompleted(discordId: string): Promise<void> 
   }
 }
 
+export async function listPendingOnboardings(): Promise<OnboardingRecord[]> {
+  if (!config.supabaseUrl) return []
+
+  try {
+    const res = await supabaseRequest(
+      `discord_onboarding?status=neq.completed&select=*&order=created_at.desc`,
+      'GET'
+    )
+    if (!res.ok) return []
+    return (await res.json()) as OnboardingRecord[]
+  } catch (err) {
+    console.error('[SUPA] Erro ao listar pendentes:', err)
+    return []
+  }
+}
+
 export async function markOnboardingTimeout(discordId: string): Promise<void> {
   if (!config.supabaseUrl) return
 
