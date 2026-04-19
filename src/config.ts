@@ -51,4 +51,7 @@ export const config = {
 
   supabaseUrl: secrets.SUPABASE_BRAIN_URL || '',
   supabaseServiceKey: secrets.SUPABASE_BRAIN_SERVICE_KEY || '',
+
+  httpPort: parseInt(secrets.HTTP_PORT || '0', 10),
+  httpToken: secrets.BOT_HTTP_TOKEN || '',
 }

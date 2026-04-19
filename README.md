@@ -25,6 +25,8 @@ src/
     ac-sync.ts          — sync com ActiveCampaign (contact/sync, fields, tags)
     supabase.ts         — CRUD na tabela discord_onboarding (saves incrementais)
   heartbeat.ts          — upsert em worker_heartbeats a cada 60s (cockpit monitora)
+  activity-log.ts       — logActivity() + hashEmail() para activity_log granular
+  http-server.ts        — HTTP control plane pro JARVIS (bearer auth, 4 endpoints)
   utils/
     validators.ts       — validação de email e telefone
 ```
@@ -34,7 +36,20 @@ src/
 Bot escreve no **Supabase Brain** (`atrqyavpbjwpjsewwcrj`), mesmo projeto do cockpit/Overclock. Tabelas:
 
 - `discord_onboarding` — 1 row por usuario, updates incrementais por pergunta
-- `worker_heartbeats` — 1 row `worker_id='discord'`, upsert a cada 60s com `guilds` e `uptime` em `metadata` (permite cockpit saber se o bot esta vivo sem HTTP)
+- `worker_heartbeats` — 1 row `worker_id='discord'`, upsert a cada 60s com `guilds` e `uptime` em `metadata` (permite cockpit saber se o bot esta vivo sem HTTP; `uptime` zera no restart → serve de prova de deploy)
+- `activity_log` — 1 row por evento granular do onboarding (`source='discord'`), consumido pelo cockpit em tempo real
+
+### Eventos `activity_log` emitidos
+
+| `action` | Quando | `metadata` principal |
+|----------|--------|----------------------|
+| `onboarding_started` | Thread privada criada apos `GuildMemberAdd` | `discord_user_id`, `username` |
+| `question_answered` | Cada resposta de Q1–Q10 | `step`, `question_key`, `email_hash` (SHA-256 truncado 16) |
+| `sync_to_ac` | Contato criado/atualizado no ActiveCampaign apos Q3 | `ac_contact_id`, `email_hash` |
+| `onboarding_completed` | Apos Q10, antes da troca de roles | `took_ms`, `ac_contact_id` |
+| `onboarding_abandoned` | Timeout de 10min sem completar Q3 | `last_step`, `reason` |
+
+Emails **nunca** entram no `activity_log` em claro — sempre `email_hash` (SHA-256, primeiros 16 chars). Payload limitado a 2000 chars (trunca para `{_truncated: true, action}` se exceder).
 
 ## Deploy
 
@@ -80,7 +95,31 @@ Em dev: carrega de `~/.secrets/emailhacker`. No Coolify: env vars no painel.
 | `AC_LASCHUK_API_KEY` | Sim | API key do ActiveCampaign |
 | `SUPABASE_BRAIN_URL` | Sim | URL do projeto Brain (`atrqyavpbjwpjsewwcrj`) |
 | `SUPABASE_BRAIN_SERVICE_KEY` | Sim | Service role key do Brain |
+| `HTTP_PORT` | Opcional | Porta do HTTP server pro JARVIS (ex: `8787`). Se ausente, server nao sobe. |
+| `BOT_HTTP_TOKEN` | Com HTTP_PORT | Bearer token pro JARVIS autenticar (random 32+ chars). |
+
+## HTTP API (JARVIS control plane)
+
+Sobe junto com o bot quando `HTTP_PORT` e `BOT_HTTP_TOKEN` estao setados. Auth: `Authorization: Bearer {BOT_HTTP_TOKEN}` em todas as rotas exceto `/health`.
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/health` | `{status, uptime_s, members_in_flight}` — sem auth |
+| GET | `/members/pending` | Lista onboardings com `status != completed` |
+| GET | `/members/:discordId/status` | 1 row + respostas + `gate_completed_at` |
+| POST | `/members/:discordId/resume` | Reabre a pergunta atual. 409 se `completed`. Loga `resume_by_jarvis` em `activity_log` |
+| POST | `/members/:discordId/nudge` | DM de lembrete. 409 se `completed`. Loga `nudge_by_jarvis` |
+
+Erros: `404 not_found`, `401 unauthorized`, `409 already_completed`, `500 internal_error`. Nunca retorna stack.
 
 ## Stack
 
 TypeScript, discord.js v14, ActiveCampaign API, Supabase (PostgreSQL).
+
+## Status atual
+
+- **Em producao** — rodando no Coolify (UUID `b4hue1u3dnqqamaql1hnnmmb`)
+- **Ultimo deploy:** commit `ca83c2a` (activity logging granular, PR #20)
+- **Observabilidade:** heartbeat + activity_log ambos ligados no Brain; cockpit Overclock pode renderizar membros, status de liveness e log de eventos sem HTTP endpoint no bot
+- **Divida conhecida:** 37 rows orfas de `discord_onboarding` no Supabase de produto antigo ainda nao foram migradas para o Brain — usuario que retomar onboarding comecaria com row em branco no Brain
+- **Sem retention policy em `activity_log`** — cresce ~14 rows por onboarding concluido, tolerado no volume atual
