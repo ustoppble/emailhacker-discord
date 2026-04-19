@@ -15,6 +15,9 @@ export interface OnboardingRecord {
   o_que_quer: string | null
   status: string
   current_step: number
+  created_at?: string
+  updated_at?: string
+  gate_completed_at?: string | null
 }
 
 async function supabaseRequest(
@@ -140,6 +143,20 @@ export async function markOnboardingCompleted(discordId: string): Promise<void> 
     console.log(`[SUPA] ✅ Onboarding completo: ${discordId}`)
   } catch (err) {
     console.error('[SUPA] Erro ao marcar completo:', err)
+  }
+}
+
+export async function fetchOnboardingRows(
+  query: string
+): Promise<OnboardingRecord[]> {
+  if (!config.supabaseUrl) return []
+  try {
+    const res = await supabaseRequest(`discord_onboarding?${query}`, 'GET')
+    if (!res.ok) return []
+    return (await res.json()) as OnboardingRecord[]
+  } catch (err) {
+    console.error('[SUPA] Erro em fetchOnboardingRows:', err)
+    return []
   }
 }
 
