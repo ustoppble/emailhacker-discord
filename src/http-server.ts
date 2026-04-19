@@ -5,11 +5,32 @@ import { sessions, startOnboarding } from './handlers/onboarding'
 import {
   getOnboardingRecord,
   listPendingOnboardings,
+  fetchOnboardingRows,
   OnboardingRecord,
 } from './services/supabase'
 import { logActivity } from './activity-log'
 
 const startedAt = Date.now()
+
+const BRT_OFFSET_HOURS = 3 // America/Sao_Paulo = UTC-3 fixo desde 2019 (sem DST)
+
+function brtToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+function brtDayStartUTC(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, BRT_OFFSET_HOURS, 0, 0))
+}
+
+function isValidDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime())
+}
 
 type Handler = (
   req: IncomingMessage,
@@ -131,6 +152,105 @@ const routes: Route[] = [
     }
     await logActivity('nudge_by_jarvis', { discord_id: params.discordId })
     json(res, 200, { nudged: true })
+  }),
+
+  compile('GET', '/stats', true, async (req, res) => {
+    const url = new URL(req.url || '/', 'http://local')
+    const period = (url.searchParams.get('period') || 'today').toLowerCase()
+    if (!['today', 'week', 'all'].includes(period)) {
+      return json(res, 400, { error: 'invalid_period' })
+    }
+
+    const today = brtToday()
+    let fromISO: string | null = null
+    let label = 'total'
+    if (period === 'today') {
+      fromISO = brtDayStartUTC(today).toISOString()
+      label = 'hoje'
+    } else if (period === 'week') {
+      const start = brtDayStartUTC(today)
+      start.setUTCDate(start.getUTCDate() - 6)
+      fromISO = start.toISOString()
+      label = 'ultimos 7 dias'
+    }
+
+    const periodFilter = fromISO
+      ? `created_at=gte.${encodeURIComponent(fromISO)}&`
+      : ''
+    const gateFilter = fromISO
+      ? `gate_completed_at=gte.${encodeURIComponent(fromISO)}&`
+      : 'gate_completed_at=not.is.null&'
+
+    const [periodRows, completedRows, allRows] = await Promise.all([
+      fetchOnboardingRows(`${periodFilter}select=status,created_at,gate_completed_at`),
+      fetchOnboardingRows(`${gateFilter}select=gate_completed_at`),
+      fetchOnboardingRows(`select=status,gate_completed_at`),
+    ])
+
+    const abandonedStatuses = new Set(['abandoned', 'timeout'])
+    const entered = periodRows.length
+    const completed = completedRows.length
+    const abandoned = periodRows.filter((r) => abandonedStatuses.has(r.status)).length
+    const inProgress = periodRows.filter(
+      (r) => r.status !== 'completed' && !abandonedStatuses.has(r.status)
+    ).length
+
+    const total = allRows.length
+    const approved = allRows.filter((r) => !!r.gate_completed_at).length
+
+    json(res, 200, {
+      period,
+      period_label: label,
+      entered,
+      completed,
+      in_progress: inProgress,
+      abandoned,
+      all_time: {
+        total,
+        approved,
+        pending: total - approved,
+      },
+    })
+  }),
+
+  compile('GET', '/cohort', true, async (req, res) => {
+    const url = new URL(req.url || '/', 'http://local')
+    const date = url.searchParams.get('date') || brtToday()
+    if (!isValidDate(date)) return json(res, 400, { error: 'invalid_date' })
+
+    const start = brtDayStartUTC(date)
+    const end = new Date(start.getTime() + 86400000)
+    const rows = await fetchOnboardingRows(
+      `created_at=gte.${encodeURIComponent(start.toISOString())}&` +
+        `created_at=lt.${encodeURIComponent(end.toISOString())}&` +
+        `select=*&order=created_at.desc`
+    )
+
+    const withProfile = rows.filter((r) => !!r.gate_completed_at)
+    const withoutProfile = rows.filter((r) => !r.gate_completed_at)
+    const ranked = [...withProfile, ...withoutProfile].slice(0, 20)
+
+    json(res, 200, {
+      date,
+      total: rows.length,
+      with_profile: withProfile.length,
+      without_profile_count: withoutProfile.length,
+      profiles: ranked.map((r) => ({
+        discord_id: r.discord_id,
+        username: r.discord_username,
+        name: r.name,
+        nivel_tecnico: r.nivel_tecnico,
+        objetivo: r.objetivo,
+        faixa_renda: r.faixa_renda,
+        ferramentas: r.ferramentas,
+        maior_dificuldade: r.maior_dificuldade,
+        como_conheceu: r.como_conheceu,
+        o_que_quer: r.o_que_quer,
+        current_step: r.current_step,
+        created_at: r.created_at ?? null,
+        gate_completed_at: r.gate_completed_at ?? null,
+      })),
+    })
   }),
 ]
 
